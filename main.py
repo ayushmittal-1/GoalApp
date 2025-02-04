@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import re
 import requests
 from pydantic import BaseModel
@@ -15,8 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-#  Hardcoded API Key (Not Secure – Use Environment Variables Instead)
+# Hardcoded API Key (Not Secure – Use Environment Variables Instead)
 MISTRAL_API_KEY = "8ouOddJYIgTdILvYVFPyw7qSj6c0zjzL"
 MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
 
@@ -43,14 +42,13 @@ async def generate_tasks(request: GoalRequest):
     num_days = extract_days(request.goal)
 
     prompt = (
-    f"Break down the following goal into exactly {num_days} daily tasks. "
-    "Each day should focus on a different DSA topic, covering concepts, examples, and practice. "
-    "Topics should progress from basic (arrays, linked lists) to advanced (dynamic programming, graphs). "
-    "Ensure diversity in learning approaches: some days focus on theory, others on coding practice. "
-    "Respond in JSON format like this: { 'tasks': [ 'Day 1: Learn Arrays, do 5 problems', 'Day 2: Learn Recursion, solve 3 problems' ] } "
-    f"Goal: {request.goal}"
-)
-
+        f"Break down the following goal into exactly {num_days} daily tasks. "
+        "Each day should focus on a different DSA topic, covering concepts, examples, and practice. "
+        "Topics should progress from basic (arrays, linked lists) to advanced (dynamic programming, graphs). "
+        "Ensure diversity in learning approaches: some days focus on theory, others on coding practice. "
+        "Respond in JSON format like this: { \"tasks\": [ \"Day 1: Learn Arrays, do 5 problems\", \"Day 2: Learn Recursion, solve 3 problems\" ] } "
+        f"Goal: {request.goal}"
+    )
 
     headers = {
         "Authorization": f"Bearer {MISTRAL_API_KEY}",
@@ -62,40 +60,43 @@ async def generate_tasks(request: GoalRequest):
     }
 
     response = requests.post(MISTRAL_API_URL, headers=headers, json=payload)
-    
+
     if response.status_code != 200:
-        return {"error": "Failed to fetch response from Mistral AI", "status_code": response.status_code}
+        raise HTTPException(status_code=response.status_code, detail="Failed to fetch response from Mistral AI")
 
     ai_response = response.json()
     print("\n RAW AI RESPONSE:\n", ai_response)  # Debugging: Print the full response
 
-    content = ai_response.get("choices", [{}])[0].get("message", {}).get("content", "")
-
+    content = ai_response.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
     print("\n Extracted Content:\n", content)  # Debugging: Print extracted content
 
     tasks = parse_tasks(content)
+
+    if not tasks:
+        raise HTTPException(status_code=400, detail="Failed to extract tasks from response")
 
     return {"goal": request.goal, "tasks": tasks}
 
 def parse_tasks(content: str):
     """Parses the AI response into a structured JSON format."""
     tasks = []
-    
+
     try:
         # Try parsing directly as JSON
         parsed_data = json.loads(content)
-        if isinstance(parsed_data, list):
-            return parsed_data  # If Mistral directly gives a list, return it
-        
+        if isinstance(parsed_data, dict) and "tasks" in parsed_data:
+            return parsed_data["tasks"]  # If Mistral directly gives a JSON response
+        elif isinstance(parsed_data, list):
+            return parsed_data  # If Mistral directly gives a list of tasks
     except json.JSONDecodeError:
         print("\n JSON Parsing Failed. Trying to extract numbered tasks.")
 
-    # Otherwise, extract manually
+    # Otherwise, extract manually from numbered format
     lines = content.split("\n")
     for line in lines:
         line = line.strip()
-        match = re.match(r"^\d+\.\s*(.+)", line)  # Matches "1. Task description"
+        match = re.match(r"^\s*Day\s*\d+:\s*(.+)", line)  # Matches "Day X: Task description"
         if match:
-            tasks.append({"task": match.group(1).strip(), "subtasks": []})
+            tasks.append(match.group(1).strip())
 
     return tasks
