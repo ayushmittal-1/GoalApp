@@ -43,10 +43,10 @@ async def generate_tasks(request: GoalRequest):
 
     prompt = (
         f"Break down the following goal into exactly {num_days} daily tasks. "
-        "Each day should focus on a different DSA topic, covering concepts, examples, and practice. "
-        "Topics should progress from basic (arrays, linked lists) to advanced (dynamic programming, graphs). "
-        "Ensure diversity in learning approaches: some days focus on theory, others on coding practice. "
-        "Respond in JSON format like this: { \"tasks\": [ \"Day 1: Learn Arrays, do 5 problems\", \"Day 2: Learn Recursion, solve 3 problems\" ] } "
+        "Each day should focus on a different topic, covering concepts, and practice. "
+        "Topics should progress from basic to advanced . "
+        "Ensure diversity in learning approaches: some days focus on theory, others on practice. "
+        "Respond in JSON format like this: { \"tasks\": [ \"Day 1: learn basics of whatever skill is asked,\", \"Day 2: practice that skill, practice\" ] } "
         f"Goal: {request.goal}"
     )
 
