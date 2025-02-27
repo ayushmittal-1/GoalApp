@@ -1,9 +1,25 @@
+from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
+import os
+
 from fastapi import FastAPI, HTTPException
 import re
 import requests
 from pydantic import BaseModel
 import json
 from fastapi.middleware.cors import CORSMiddleware
+
+
+# MongoDB Connection URI (Replace with your MongoDB URL)
+MONGO_URI = "mongodb://localhost:27017"
+DATABASE_NAME = "goal_tracker"
+
+client = AsyncIOMotorClient(MONGO_URI)
+db = client[DATABASE_NAME]
+users_collection = db["users"]  # Collection to store user data
+
+
+
 
 app = FastAPI()
 
@@ -20,6 +36,7 @@ MISTRAL_API_KEY = "8ouOddJYIgTdILvYVFPyw7qSj6c0zjzL"
 MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
 
 class GoalRequest(BaseModel):
+    user_id: str #unique identifier for user
     goal: str
 
 def extract_days(goal: str) -> int:
@@ -74,8 +91,16 @@ async def generate_tasks(request: GoalRequest):
 
     if not tasks:
         raise HTTPException(status_code=400, detail="Failed to extract tasks from response")
+    
+    # Store in MongoDB
+    task_entry = {
+        "user_id": request.user_id,
+        "goal": request.goal,
+        "tasks": tasks,
+    }
+    result = await users_collection.insert_one(task_entry)
 
-    return {"goal": request.goal, "tasks": tasks}
+    return {"goal": request.goal, "tasks": tasks, "task_id": str(result.inserted_id)}
 
 def parse_tasks(content: str):
     """Parses the AI response into a structured JSON format."""
@@ -99,4 +124,16 @@ def parse_tasks(content: str):
         if match:
             tasks.append(match.group(1).strip())
 
+    return tasks
+
+
+
+
+
+
+@app.get("/user_tasks/{user_id}")
+async def get_user_tasks(user_id: str):
+    tasks = await users_collection.find({"user_id": user_id}).to_list(100)
+    for task in tasks:
+        task["_id"] = str(task["_id"])  # Convert ObjectId to string
     return tasks
